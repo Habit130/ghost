@@ -9,6 +9,12 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow: hidden;
+  touch-action: manipulation;
+}
+
+canvas {
+  touch-action: manipulation;
 }
 
 #app {
@@ -27,6 +33,8 @@ body {
   color: #eee;
   font-family: system-ui, 'PingFang SC', 'Microsoft YaHei', sans-serif;
   text-align: center;
+  user-select: none;
+  touch-action: manipulation;
 }
 
 #overlay.hidden {

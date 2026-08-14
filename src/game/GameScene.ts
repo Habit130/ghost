@@ -43,6 +43,40 @@ const DIR_KEYS: Record<string, Vec> = {
  * translates keyboard/touch into semantic events. No game rules live here.
  */
 export class GameScene extends Phaser.Scene {
+  private static instance: GameScene | null = null
+
+  /** Register global input listeners once, independent of the scene lifecycle. */
+  static bind(): void {
+    window.addEventListener('keydown', GameScene.onGlobalKeyDown)
+    window.addEventListener('pointerdown', GameScene.onGlobalPointerDown)
+    document.getElementById('overlay')?.addEventListener('click', GameScene.onGlobalOverlayClick)
+    document.addEventListener('visibilitychange', GameScene.onVisibilityChange)
+  }
+
+  private static onGlobalKeyDown = (e: KeyboardEvent): void => {
+    GameScene.instance?.handleKeyDown(e)
+  }
+
+  private static onGlobalPointerDown = (e: PointerEvent): void => {
+    GameScene.instance?.handlePointerDown(e)
+  }
+
+  private static onGlobalOverlayClick = (e: MouseEvent): void => {
+    GameScene.instance?.handleOverlayClick(e)
+  }
+
+  private static onVisibilityChange = (): void => {
+    if (document.hidden) GameScene.instance?.handleAutoPause()
+  }
+
+  private static attach(scene: GameScene): void {
+    GameScene.instance = scene
+  }
+
+  private static detach(): void {
+    GameScene.instance = null
+  }
+
   private state!: GameState
   private queuedEvents: GameEvent[] = []
   private accumulator = 0
@@ -66,14 +100,13 @@ export class GameScene extends Phaser.Scene {
 
   constructor() {
     super('GameScene')
-    window.addEventListener('keydown', this.onKeyDown)
-    window.addEventListener('pointerdown', this.onPointerDown)
-    this.overlayEl = document.getElementById('overlay')
-    this.overlayEl?.addEventListener('click', this.onOverlayClick)
   }
 
   create(): void {
     this.state = createInitialState(newSeed(), readHighScore())
+    this.overlayEl = document.getElementById('overlay')
+    GameScene.attach(this)
+    this.events.once('shutdown', () => GameScene.detach())
     this.paused = false
     this.accumulator = 0
     this.aimedHostId = null
@@ -268,7 +301,7 @@ ${s.newRecord ? '<div class="record">新纪录!</div>' : ''}
     el.className = 'hidden'
   }
 
-  private onKeyDown = (e: KeyboardEvent): void => {
+  handleKeyDown = (e: KeyboardEvent): void => {
     if (!this.state) return
     const s = this.state
     if (e.code === 'Escape' || e.code === 'KeyP') {
@@ -292,7 +325,7 @@ ${s.newRecord ? '<div class="record">新纪录!</div>' : ''}
     if (dir !== undefined) this.aimToward(dir)
   }
 
-  private onPointerDown = (e: PointerEvent): void => {
+  handlePointerDown = (e: PointerEvent): void => {
     if (!this.state) return
     if (this.overlayEl !== null && e.target instanceof Node && this.overlayEl.contains(e.target)) {
       return
@@ -321,7 +354,7 @@ ${s.newRecord ? '<div class="record">新纪录!</div>' : ''}
     if (best !== null) this.dashTo(best.id)
   }
 
-  private onOverlayClick = (e: MouseEvent): void => {
+  handleOverlayClick = (e: MouseEvent): void => {
     if (!this.state) return
     const id = (e.target as HTMLElement | null)?.id ?? ''
     if (id === 'resume-btn') {
@@ -345,6 +378,15 @@ ${s.newRecord ? '<div class="record">新纪录!</div>' : ''}
     if (this.state.phase === 'gameover' && performance.now() >= this.restartAllowedAt) {
       this.newRun(true)
     }
+  }
+
+  /** Pause when the tab loses visibility (UI decision #9). */
+  handleAutoPause(): void {
+    if (this.paused) return
+    if (this.state.phase !== 'running' && this.state.phase !== 'dying') return
+    this.paused = true
+    this.accumulator = 0
+    this.syncOverlay()
   }
 
   private aimToward(dir: Vec): void {
