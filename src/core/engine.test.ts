@@ -8,6 +8,7 @@ import {
   HOST_PURIFY_MS,
 } from './constants.ts'
 import { step } from './engine.ts'
+import { BASE_SCORE, DISTANCE_BONUS_DIVISOR, NEAR_MISS_BONUS } from './scoring.ts'
 import { createInitialState } from './state.ts'
 import type { GameEvent, GameState, Vec } from './types.ts'
 
@@ -66,10 +67,12 @@ describe('dashing and scoring', () => {
   it('arrives at the target host and scores the base amount', () => {
     const s = createInitialState(7)
     start(s)
+    const from = s.ghostPos
     const target = s.hosts[1]
     dashUntilArrived(s, target.id, true)
+    const distance = Math.hypot(target.pos.x - from.x, target.pos.y - from.y)
     expect(s.ghostHostId).toBe(target.id)
-    expect(s.score).toBe(10)
+    expect(s.score).toBe(BASE_SCORE + Math.floor(distance / DISTANCE_BONUS_DIVISOR))
     expect(s.combo).toBe(1)
   })
 
@@ -101,8 +104,9 @@ describe('dashing and scoring', () => {
       run(s, [], stepsFor(300), true)
     }
     expect(s.combo).toBe(11)
-    // The 11th possession scored with the capped 10x multiplier.
-    expect(gained).toBe(100)
+    // The 11th possession scored with the capped 10x multiplier plus the distance bonus.
+    const distance = Math.hypot(b.pos.x - a.pos.x, b.pos.y - a.pos.y)
+    expect(gained).toBe(100 + Math.floor(distance / DISTANCE_BONUS_DIVISOR))
   })
 
   it('blocks a re-dash within the cooldown after arrival', () => {
@@ -232,6 +236,31 @@ describe('exorcist homing', () => {
     run(s, [], stepsFor(2500))
     const late = Math.hypot(e.pos.x - s.ghostPos.x, e.pos.y - s.ghostPos.y)
     expect(late).toBeLessThan(early)
+  })
+})
+
+describe('risk and reward', () => {
+  it('pays a distance bonus that grows with the dash length', () => {
+    const s = createInitialState(7)
+    start(s)
+    const b = s.hosts[1]
+    b.pos = { x: s.hosts[0].pos.x + 720, y: s.hosts[0].pos.y }
+    dashUntilArrived(s, b.id, true)
+    expect(s.score).toBe(BASE_SCORE + Math.floor(720 / DISTANCE_BONUS_DIVISOR))
+    expect(s.nearMiss).toBe(false)
+  })
+
+  it('pays a near-miss bonus for shaving past an exorcist without dying', () => {
+    const s = createInitialState(5)
+    start(s)
+    const a = s.hosts[0]
+    const b = s.hosts[1]
+    b.pos = { x: a.pos.x + 300, y: a.pos.y }
+    s.exorcists[0].pos = { x: a.pos.x + 150, y: a.pos.y + 50 }
+    dashUntilArrived(s, b.id)
+    expect(s.phase).toBe('running')
+    expect(s.nearMiss).toBe(true)
+    expect(s.score).toBe(BASE_SCORE + Math.floor(300 / DISTANCE_BONUS_DIVISOR) + NEAR_MISS_BONUS)
   })
 })
 

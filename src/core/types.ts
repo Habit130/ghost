@@ -25,6 +25,8 @@ export interface Dash {
   to: Vec
   distance: number
   progress: number
+  /** Smallest gap to any exorcist so far mid-dash; feeds the near-miss bonus. */
+  minExorcistGap: number
 }
 
 export interface GameState {
@@ -40,6 +42,8 @@ export interface GameState {
   ghostPos: Vec
   dash: Dash | null
   lastDashAtMs: number
+  /** Latched true when the last possession shaved past an exorcist (UI feedback). */
+  nearMiss: boolean
   hosts: Host[]
   exorcists: Exorcist[]
   possessions: number

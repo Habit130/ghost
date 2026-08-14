@@ -18,6 +18,8 @@ export const COLLISION_RADIUS = 24
 export const GHOST_RADIUS = 14
 export const HOST_HALF_SIZE = 26
 export const EXORCIST_RADIUS = 12
+/** Mid-dash gap under this to an exorcist counts as a shave (see NEAR_MISS_BONUS). */
+export const NEAR_MISS_RADIUS = 40
 
 export const EXORCIST_START = 1
 export const EXORCIST_INTERVAL_MS = 20000

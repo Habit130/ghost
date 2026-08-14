@@ -49,6 +49,7 @@ export function createInitialState(seed: number, highScore = 0): GameState {
     ghostPos: { ...first.pos },
     dash: null,
     lastDashAtMs: -1_000_000,
+    nearMiss: false,
     hosts,
     exorcists: [{ id: 0, pos: { x: WORLD_WIDTH - 60, y: WORLD_HEIGHT / 2 }, dir }],
     possessions: 0,
