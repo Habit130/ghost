@@ -25,6 +25,13 @@ export const EXORCIST_MAX = 5
 export const EXORCIST_BASE_SPEED = 240
 export const EXORCIST_SPEED_STEP = 8
 
+// Homing: exorcists charge at the ghost; inside the camp ring they circle the
+// possessed ghost instead. The ring tightens while the ghost overstays a host.
+export const EXORCIST_CAMP_RADIUS = 120
+export const EXORCIST_CAMP_MIN_RADIUS = 48
+export const EXORCIST_CAMP_SHRINK_PER_SEC = 12
+export const EXORCIST_CAMP_SPEED = 70
+
 export const INITIAL_HOSTS = 8
 export const MAX_HOSTS = 12
 export const RARE_HOST_EVERY = 10
