@@ -131,7 +131,7 @@ describe('purify pressure', () => {
     const s = createInitialState(3)
     start(s)
     const first = s.hosts[0]
-    run(s, [], stepsFor(HOST_PURIFY_MS + FIXED_DT_MS))
+    run(s, [], stepsFor(HOST_PURIFY_MS) + 2)
     expect(s.phase).toBe('dying')
     expect(first.purified).toBe(true)
     expect(s.ghostHostId).toBeNull()
@@ -229,11 +229,14 @@ describe('exorcist homing', () => {
   it('tightens the camp ring the longer the ghost overstays', () => {
     const s = createInitialState(5)
     start(s)
+    // Dash once so the possession carries a real timestamp; the initial host
+    // keeps its ring fresh by design.
+    dashUntilArrived(s, s.hosts[1].id, true)
     const e = s.exorcists[0]
     e.pos = { x: s.ghostPos.x + EXORCIST_CAMP_RADIUS, y: s.ghostPos.y }
-    run(s, [], stepsFor(1500))
+    run(s, [], stepsFor(1200))
     const early = Math.hypot(e.pos.x - s.ghostPos.x, e.pos.y - s.ghostPos.y)
-    run(s, [], stepsFor(2500))
+    run(s, [], stepsFor(1800))
     const late = Math.hypot(e.pos.x - s.ghostPos.x, e.pos.y - s.ghostPos.y)
     expect(late).toBeLessThan(early)
   })

@@ -134,10 +134,11 @@ function tickExorcists(state: GameState, dtMs: number): void {
     let vy: number
     if (state.dash === null && distance <= ringRadius) {
       // Camp: circle the ghost, correcting radially toward the shrinking ring.
+      // The 2x factor keeps the orbit tracking the ring as it closes in.
       const orbit = e.id % 2 === 0 ? 1 : -1
       const radial = (distance - ringRadius) / ringRadius
-      vx = (-ny * orbit + nx * radial) * EXORCIST_CAMP_SPEED
-      vy = (nx * orbit + ny * radial) * EXORCIST_CAMP_SPEED
+      vx = (-ny * orbit + nx * radial * 2) * EXORCIST_CAMP_SPEED
+      vy = (nx * orbit + ny * radial * 2) * EXORCIST_CAMP_SPEED
     } else {
       vx = nx * seekSpeed
       vy = ny * seekSpeed

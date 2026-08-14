@@ -13,7 +13,7 @@ export const MAX_MULTIPLIER = 10
 export const RARE_HOST_MULTIPLIER = 20
 
 /** Milliseconds after a possession within which the next one continues the combo. */
-export const COMBO_WINDOW_MS = 1500
+export const COMBO_WINDOW_MS = 1200
 
 /** Risk reward (#11): +1 point per this many px of dash distance. */
 export const DISTANCE_BONUS_DIVISOR = 60

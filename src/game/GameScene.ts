@@ -285,7 +285,7 @@ export class GameScene extends Phaser.Scene {
       el.className = ''
       el.innerHTML = `<h1>Boo Dash / 阿飘冲刺</h1>
 <div class="sub">方向键 / WASD 瞄准 · Space 冲刺 · 触屏点选宿主</div>
-<div class="sub">躲开驱魔人,别在一个宿主里停留超过 5 秒</div>
+<div class="sub">躲开驱魔人,别在一个宿主里停留超过 3.5 秒</div>
 <div class="score">最高 ${s.highScore}</div>
 <div class="sub">按任意键 / 点击开始</div>`
       return
