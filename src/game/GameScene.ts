@@ -88,6 +88,9 @@ export class GameScene extends Phaser.Scene {
 
   private ghost!: Phaser.GameObjects.Arc
   private aimMark!: Phaser.GameObjects.Arc
+  private aimGfx!: Phaser.GameObjects.Graphics
+  private trailGfx!: Phaser.GameObjects.Graphics
+  private trail: Vec[] = []
   private hostShapes = new Map<number, Phaser.GameObjects.Rectangle>()
   private exorcistShapes = new Map<number, Phaser.GameObjects.Arc>()
   private scoreText!: Phaser.GameObjects.Text
@@ -136,6 +139,11 @@ export class GameScene extends Phaser.Scene {
     this.aimMark = this.add.circle(0, 0, HOST_HALF_SIZE + 14, AIM_COLOR, 0.22)
     this.aimMark.setDepth(4)
     this.aimMark.setVisible(false)
+    this.aimGfx = this.add.graphics()
+    this.aimGfx.setDepth(4)
+    this.trailGfx = this.add.graphics()
+    this.trailGfx.setDepth(2)
+    this.trail = []
 
     this.lastPhase = ''
     this.lastPaused = false
@@ -174,6 +182,7 @@ export class GameScene extends Phaser.Scene {
     const s = this.state
 
     this.ghost.setPosition(s.ghostPos.x, s.ghostPos.y)
+    this.drawTrail(s)
     if (s.phase === 'dying' && s.deathAtMs !== null) {
       this.ghost.setAlpha(1 - Math.min(1, (s.timeMs - s.deathAtMs) / DEATH_FREEZE_MS))
     } else {
@@ -224,12 +233,17 @@ export class GameScene extends Phaser.Scene {
       if (target !== undefined) {
         this.aimMark.setPosition(target.pos.x, target.pos.y)
         this.aimMark.setVisible(true)
+        this.aimGfx.clear()
+        this.aimGfx.lineStyle(2, AIM_COLOR, 0.4)
+        this.aimGfx.lineBetween(s.ghostPos.x, s.ghostPos.y, target.pos.x, target.pos.y)
       } else {
         this.aimedHostId = null
         this.aimMark.setVisible(false)
+        this.aimGfx.clear()
       }
     } else {
       this.aimMark.setVisible(false)
+      this.aimGfx.clear()
     }
 
     if (!this.prev.dashing && s.dash !== null) blips.dash()
@@ -252,6 +266,27 @@ export class GameScene extends Phaser.Scene {
     if (this.lastPaused !== this.paused) {
       this.lastPaused = this.paused
       this.syncOverlay()
+    }
+  }
+
+  /** Fading afterimages behind the ghost while it dashes, so flight is readable. */
+  private drawTrail(s: GameState): void {
+    if (s.dash !== null) {
+      const last = this.trail[this.trail.length - 1]
+      if (last === undefined || Math.hypot(s.ghostPos.x - last.x, s.ghostPos.y - last.y) >= 10) {
+        this.trail.push({ x: s.ghostPos.x, y: s.ghostPos.y })
+      }
+      if (this.trail.length > 10) this.trail.shift()
+      const g = this.trailGfx
+      g.clear()
+      for (let i = 0; i < this.trail.length; i++) {
+        const t = (i + 1) / this.trail.length
+        g.fillStyle(GHOST_COLOR, 0.25 * t)
+        g.fillCircle(this.trail[i].x, this.trail[i].y, GHOST_RADIUS * (0.4 + 0.5 * t))
+      }
+    } else if (this.trail.length > 0) {
+      this.trail.length = 0
+      this.trailGfx.clear()
     }
   }
 
