@@ -1,7 +1,6 @@
 import Phaser from 'phaser'
 import {
   DEATH_FREEZE_MS,
-  EXORCIST_RADIUS,
   FIXED_DT_MS,
   GHOST_RADIUS,
   HOST_HALF_SIZE,
@@ -14,16 +13,23 @@ import {
 import { step } from '../core/engine.ts'
 import { createInitialState } from '../core/state.ts'
 import type { GameEvent, GameState, Host, Vec } from '../core/types.ts'
-import { blips } from './audio.ts'
 
 const HIGH_SCORE_KEY = 'boo-dash.highScore'
 
-const HOST_COLOR = 0x4c3f78
-const HOST_CURRENT_COLOR = 0x7a5fd0
-const HOST_RARE_COLOR = 0xffd166
-const HOST_PURIFIED_COLOR = 0x2a2438
-const HOST_WARN_COLOR = 0xc14b4b
-const EXORCIST_COLOR = 0xe5484d
+/**
+ * Kenney CC0 tiles (see docs/THIRD-PARTY.md). Sheets are 16x16 frames with a
+ * 1px margin, so Phaser frame index = row * cols + col (indoor: 26 cols,
+ * chars: 53 cols). Swapping a host or the exorcist = editing these indices.
+ */
+const HOST_FRAMES = [30, 52, 160, 162, 280, 375, 255, 438]
+const EXORCIST_FRAME = 35
+const SPRITE_SCALE = 3
+
+const TINT_CURRENT = 0xddddff
+const TINT_RARE = 0xffd166
+const TINT_PURIFIED = 0x555566
+const TINT_WARN = 0xff5555
+const TINT_EXORCIST = 0xe5484d
 const GHOST_COLOR = 0xf2f2f7
 const AIM_COLOR = 0xffd166
 
@@ -50,6 +56,7 @@ export class GameScene extends Phaser.Scene {
     window.addEventListener('keydown', GameScene.onGlobalKeyDown)
     window.addEventListener('pointerdown', GameScene.onGlobalPointerDown)
     document.getElementById('overlay')?.addEventListener('click', GameScene.onGlobalOverlayClick)
+    document.getElementById('mute-btn')?.addEventListener('click', GameScene.onGlobalMuteClick)
     document.addEventListener('visibilitychange', GameScene.onVisibilityChange)
   }
 
@@ -69,6 +76,10 @@ export class GameScene extends Phaser.Scene {
     if (document.hidden) GameScene.instance?.handleAutoPause()
   }
 
+  private static onGlobalMuteClick = (): void => {
+    GameScene.instance?.toggleMute()
+  }
+
   private static attach(scene: GameScene): void {
     GameScene.instance = scene
   }
@@ -86,16 +97,17 @@ export class GameScene extends Phaser.Scene {
   private aimedHostId: number | null = null
   private overlayEl: HTMLElement | null = null
 
-  private ghost!: Phaser.GameObjects.Arc
+  private ghost!: Phaser.GameObjects.Sprite
   private aimMark!: Phaser.GameObjects.Arc
   private aimGfx!: Phaser.GameObjects.Graphics
   private trailGfx!: Phaser.GameObjects.Graphics
   private trail: Vec[] = []
-  private hostShapes = new Map<number, Phaser.GameObjects.Rectangle>()
-  private exorcistShapes = new Map<number, Phaser.GameObjects.Arc>()
+  private hostSprites = new Map<number, Phaser.GameObjects.Sprite>()
+  private exorcistSprites = new Map<number, Phaser.GameObjects.Sprite>()
   private scoreText!: Phaser.GameObjects.Text
   private comboText!: Phaser.GameObjects.Text
   private highText!: Phaser.GameObjects.Text
+  private music: Phaser.Sound.BaseSound | null = null
 
   private lastPhase = ''
   private lastPaused = false
@@ -103,6 +115,28 @@ export class GameScene extends Phaser.Scene {
 
   constructor() {
     super('GameScene')
+  }
+
+  preload(): void {
+    this.load.spritesheet('tiles', 'assets/spritesheets/indoor.png', {
+      frameWidth: 16,
+      frameHeight: 16,
+      margin: 1,
+      spacing: 1,
+    })
+    this.load.spritesheet('chars', 'assets/spritesheets/chars.png', {
+      frameWidth: 16,
+      frameHeight: 16,
+      margin: 1,
+      spacing: 1,
+    })
+    this.load.spritesheet('ghost', 'assets/ghost.png', { frameWidth: 16, frameHeight: 16 })
+    this.load.audio('sfx-dash', 'assets/audio/sfx/cloth1.ogg')
+    this.load.audio('sfx-possess', 'assets/audio/sfx/creak1.ogg')
+    this.load.audio('sfx-rare', 'assets/audio/sfx/handleCoins.ogg')
+    this.load.audio('sfx-nearmiss', 'assets/audio/sfx/knifeSlice2.ogg')
+    this.load.audio('sfx-death', 'assets/audio/sfx/chop.ogg')
+    this.load.audio('bgm', 'assets/audio/music/bgm.ogg')
   }
 
   create(): void {
@@ -113,8 +147,8 @@ export class GameScene extends Phaser.Scene {
     this.paused = false
     this.accumulator = 0
     this.aimedHostId = null
-    this.hostShapes.clear()
-    this.exorcistShapes.clear()
+    this.hostSprites.clear()
+    this.exorcistSprites.clear()
     this.prev = {
       dashing: false,
       hostId: this.state.ghostHostId ?? -1,
@@ -141,7 +175,8 @@ export class GameScene extends Phaser.Scene {
         color: '#9f95c7',
       })
       .setOrigin(1, 0)
-    this.ghost = this.add.circle(0, 0, GHOST_RADIUS, GHOST_COLOR)
+    this.ghost = this.add.sprite(0, 0, 'ghost', 0)
+    this.ghost.setScale(SPRITE_SCALE)
     this.ghost.setDepth(5)
     this.aimMark = this.add.circle(0, 0, HOST_HALF_SIZE + 14, AIM_COLOR, 0.22)
     this.aimMark.setDepth(4)
@@ -151,6 +186,9 @@ export class GameScene extends Phaser.Scene {
     this.trailGfx = this.add.graphics()
     this.trailGfx.setDepth(2)
     this.trail = []
+    if (this.music === null) {
+      this.music = this.sound.add('bgm', { loop: true, volume: 0.35 })
+    }
 
     this.lastPhase = ''
     this.lastPaused = false
@@ -189,6 +227,9 @@ export class GameScene extends Phaser.Scene {
     const s = this.state
 
     this.ghost.setPosition(s.ghostPos.x, s.ghostPos.y)
+    // The ghost hides inside its host while possessed; it only flies mid-dash.
+    this.ghost.setVisible(s.dash !== null || s.phase !== 'running')
+    this.ghost.setFrame(s.dash !== null ? 1 : 0)
     this.drawTrail(s)
     if (s.phase === 'dying' && s.deathAtMs !== null) {
       this.ghost.setAlpha(1 - Math.min(1, (s.timeMs - s.deathAtMs) / DEATH_FREEZE_MS))
@@ -197,37 +238,39 @@ export class GameScene extends Phaser.Scene {
     }
 
     for (const host of s.hosts) {
-      const shape = this.hostShape(host)
-      shape.setPosition(host.pos.x, host.pos.y)
+      const sprite = this.hostSprite(host)
+      sprite.setPosition(host.pos.x, host.pos.y)
       const remaining =
         host.id === s.ghostHostId ? host.purifyDeadlineMs - s.timeMs : Number.POSITIVE_INFINITY
       if (host.purified) {
-        shape.fillColor = HOST_PURIFIED_COLOR
-        shape.setAlpha(0.5)
+        sprite.setTint(TINT_PURIFIED)
+        sprite.setAlpha(0.45)
       } else if (host.rare) {
-        shape.fillColor = HOST_RARE_COLOR
-        shape.setAlpha(1)
+        sprite.setTint(TINT_RARE)
+        sprite.setAlpha(1)
       } else if (host.id === s.ghostHostId) {
-        shape.fillColor = HOST_CURRENT_COLOR
-        shape.setAlpha(1)
+        sprite.setTint(TINT_CURRENT)
+        sprite.setAlpha(1)
       } else {
-        shape.fillColor = HOST_COLOR
-        shape.setAlpha(1)
+        sprite.clearTint()
+        sprite.setAlpha(1)
       }
       if (!host.purified && remaining < HOST_WARN_MS) {
-        shape.fillColor = HOST_WARN_COLOR
-        shape.setAlpha(0.5 + 0.5 * Math.abs(Math.sin(s.timeMs / 80)))
+        sprite.setTint(TINT_WARN)
+        sprite.setAlpha(0.5 + 0.5 * Math.abs(Math.sin(s.timeMs / 80)))
       }
     }
 
     for (const e of s.exorcists) {
-      let shape = this.exorcistShapes.get(e.id)
-      if (shape === undefined) {
-        shape = this.add.circle(e.pos.x, e.pos.y, EXORCIST_RADIUS, EXORCIST_COLOR)
-        shape.setDepth(3)
-        this.exorcistShapes.set(e.id, shape)
+      let sprite = this.exorcistSprites.get(e.id)
+      if (sprite === undefined) {
+        sprite = this.add.sprite(e.pos.x, e.pos.y, 'chars', EXORCIST_FRAME)
+        sprite.setScale(SPRITE_SCALE)
+        sprite.setDepth(3)
+        sprite.setTint(TINT_EXORCIST)
+        this.exorcistSprites.set(e.id, sprite)
       }
-      shape.setPosition(e.pos.x, e.pos.y)
+      sprite.setPosition(e.pos.x, e.pos.y)
     }
 
     this.scoreText.setText(String(s.score))
@@ -253,15 +296,15 @@ export class GameScene extends Phaser.Scene {
       this.aimGfx.clear()
     }
 
-    if (!this.prev.dashing && s.dash !== null) blips.dash()
+    if (!this.prev.dashing && s.dash !== null) this.sound.play('sfx-dash', { volume: 0.5 })
     if (this.prev.hostId !== s.ghostHostId && s.ghostHostId !== null && s.dash === null) {
       const host = s.hosts.find((h) => h.id === s.ghostHostId)
       if (host !== undefined) {
         this.floatScore(host.pos.x, host.pos.y, s.score - this.prev.score, s.nearMiss)
-        if (host.rare) blips.rare()
-        else blips.possess()
+        if (host.rare) this.sound.play('sfx-rare', { volume: 0.5 })
+        else this.sound.play('sfx-possess', { volume: 0.5 })
         if (s.nearMiss) {
-          blips.nearMiss()
+          this.sound.play('sfx-nearmiss', { volume: 0.5 })
           this.cameras.main.shake(70, 0.0035)
         }
       }
@@ -271,7 +314,7 @@ export class GameScene extends Phaser.Scene {
       this.tweens.add({ targets: this.comboText, scale: 1, duration: 180, ease: 'Back.Out' })
     }
     if (this.prev.phase === 'running' && s.phase === 'dying') {
-      blips.death()
+      this.sound.play('sfx-death', { volume: 0.6 })
       this.cameras.main.shake(140, 0.006)
     }
     this.prev = {
@@ -337,20 +380,16 @@ export class GameScene extends Phaser.Scene {
     })
   }
 
-  private hostShape(host: Host): Phaser.GameObjects.Rectangle {
-    let shape = this.hostShapes.get(host.id)
-    if (shape === undefined) {
-      shape = this.add.rectangle(
-        host.pos.x,
-        host.pos.y,
-        HOST_HALF_SIZE * 2,
-        HOST_HALF_SIZE * 2,
-        HOST_COLOR,
-      )
-      shape.setDepth(1)
-      this.hostShapes.set(host.id, shape)
+  private hostSprite(host: Host): Phaser.GameObjects.Sprite {
+    let sprite = this.hostSprites.get(host.id)
+    if (sprite === undefined) {
+      const frame = HOST_FRAMES[host.id % HOST_FRAMES.length]
+      sprite = this.add.sprite(host.pos.x, host.pos.y, 'tiles', frame)
+      sprite.setScale(SPRITE_SCALE)
+      sprite.setDepth(1)
+      this.hostSprites.set(host.id, sprite)
     }
-    return shape
+    return sprite
   }
 
   private syncOverlay(): void {
@@ -385,6 +424,7 @@ ${s.newRecord ? '<div class="record">新纪录!</div>' : ''}
 
   handleKeyDown = (e: KeyboardEvent): void => {
     if (!this.state) return
+    this.ensureMusic()
     const s = this.state
     if (e.code === 'Escape' || e.code === 'KeyP') {
       if (s.phase === 'running' || s.phase === 'dying') this.togglePause()
@@ -409,6 +449,7 @@ ${s.newRecord ? '<div class="record">新纪录!</div>' : ''}
 
   handlePointerDown = (e: PointerEvent): void => {
     if (!this.state) return
+    this.ensureMusic()
     if (this.overlayEl !== null && e.target instanceof Node && this.overlayEl.contains(e.target)) {
       return
     }
@@ -498,6 +539,18 @@ ${s.newRecord ? '<div class="record">新纪录!</div>' : ''}
   private dashTo(hostId: number): void {
     this.queuedEvents.push({ type: 'dashToHost', hostId })
     this.aimedHostId = null
+  }
+
+  /** Toggle all sound from the corner button (index.html #mute-btn). */
+  toggleMute(): void {
+    this.sound.mute = !this.sound.mute
+    const el = document.getElementById('mute-btn')
+    if (el !== null) el.textContent = this.sound.mute ? '🔇' : '🔊'
+  }
+
+  /** Browsers block audio until a user gesture; start the BGM on the first one. */
+  private ensureMusic(): void {
+    if (this.music !== null && !this.music.isPlaying) this.music.play()
   }
 
   private togglePause(): void {
