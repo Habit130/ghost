@@ -8,6 +8,13 @@
 - 技术选型:[引擎选型研究](docs/research/engine-selection.md)(票 #3)
 - 开发地图:[wayfinder 地图 #1](https://github.com/Habit130/ghost/issues/1)
 
+## 玩法(原型)
+
+- 目标:附身冲刺躲驱魔人,连击刷分;单局 1–2 分钟
+- 操作:方向键 / WASD 瞄准 + Space 冲刺;触屏点选宿主;Esc/P 暂停;R 重开
+- 规则:宿主附身 5s 超时被净化(最后 1s 变红预警);驱魔人每 20s 增 1 个(封顶 5);连击 1.5s 窗口、倍率封顶 ×10;每 10 次附身刷 1 个稀有宿主(×20)
+- 线上试玩:https://habit130.github.io/ghost/(当前为占位美术)
+
 ## 本地开发
 
 需要 Node ≥ 22.13(Vite 8 要求 ≥ 22.12,ESLint 10 要求 ≥ 22.13;仓库在 Node 24 下开发)。
