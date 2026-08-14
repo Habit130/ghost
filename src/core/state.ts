@@ -15,7 +15,7 @@ const EDGE_DIRECTIONS: Vec[] = [
   { x: 0, y: -1 },
 ]
 
-/** Fresh run: ghost at the first host, one exorcist patrolling, everything else at zero. */
+/** Fresh run: ghost at the first host, one exorcist hunting, everything else at zero. */
 export function createInitialState(seed: number, highScore = 0): GameState {
   const rng = mulberry32(seed)
   const hosts: Host[] = []

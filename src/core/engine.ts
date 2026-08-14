@@ -4,6 +4,10 @@ import {
   DASH_SPEED,
   DEATH_FREEZE_MS,
   EXORCIST_BASE_SPEED,
+  EXORCIST_CAMP_MIN_RADIUS,
+  EXORCIST_CAMP_RADIUS,
+  EXORCIST_CAMP_SHRINK_PER_SEC,
+  EXORCIST_CAMP_SPEED,
   EXORCIST_INTERVAL_MS,
   EXORCIST_MAX,
   EXORCIST_SPEED_STEP,
@@ -16,7 +20,7 @@ import {
   WORLD_WIDTH,
 } from './constants.ts'
 import { COMBO_WINDOW_MS, possessionScore } from './scoring.ts'
-import type { GameEvent, GameState, Host, Vec } from './types.ts'
+import type { Exorcist, GameEvent, GameState, Host, Vec } from './types.ts'
 
 const WALL_MARGIN = 28
 
@@ -96,25 +100,68 @@ function tickPurify(state: GameState): void {
   }
 }
 
+/**
+ * Exorcists hunt the ghost: they charge straight at its position, and once
+ * inside the camp ring they circle the possessed ghost instead of landing on
+ * it. The ring tightens while the ghost overstays, so escape dashes get
+ * harder the longer the player greedily waits. Mid-dash they always charge.
+ */
 function tickExorcists(state: GameState, dtMs: number): void {
-  const speed = exorcistSpeed(desiredExorcistCount(state))
+  const seekSpeed = exorcistSpeed(desiredExorcistCount(state))
+  const ringRadius = campRadius(state)
   for (const e of state.exorcists) {
-    e.pos.x += e.dir.x * speed * (dtMs / 1000)
-    e.pos.y += e.dir.y * speed * (dtMs / 1000)
-    if (e.pos.x < WALL_MARGIN) {
-      e.pos.x = WALL_MARGIN
-      e.dir.x = Math.abs(e.dir.x)
-    } else if (e.pos.x > WORLD_WIDTH - WALL_MARGIN) {
-      e.pos.x = WORLD_WIDTH - WALL_MARGIN
-      e.dir.x = -Math.abs(e.dir.x)
+    const dx = state.ghostPos.x - e.pos.x
+    const dy = state.ghostPos.y - e.pos.y
+    const distance = Math.hypot(dx, dy)
+    if (distance < 1) continue
+    const nx = dx / distance
+    const ny = dy / distance
+    let vx: number
+    let vy: number
+    if (state.dash === null && distance <= ringRadius) {
+      // Camp: circle the ghost, correcting radially toward the shrinking ring.
+      const orbit = e.id % 2 === 0 ? 1 : -1
+      const radial = (distance - ringRadius) / ringRadius
+      vx = (-ny * orbit + nx * radial) * EXORCIST_CAMP_SPEED
+      vy = (nx * orbit + ny * radial) * EXORCIST_CAMP_SPEED
+    } else {
+      vx = nx * seekSpeed
+      vy = ny * seekSpeed
     }
-    if (e.pos.y < WALL_MARGIN) {
-      e.pos.y = WALL_MARGIN
-      e.dir.y = Math.abs(e.dir.y)
-    } else if (e.pos.y > WORLD_HEIGHT - WALL_MARGIN) {
-      e.pos.y = WORLD_HEIGHT - WALL_MARGIN
-      e.dir.y = -Math.abs(e.dir.y)
-    }
+    e.dir = { x: nx, y: ny }
+    e.pos.x += vx * (dtMs / 1000)
+    e.pos.y += vy * (dtMs / 1000)
+    clampToWalls(e)
+  }
+}
+
+/** Distance at which exorcists start circling; shrinks the longer the ghost overstays. */
+function campRadius(state: GameState): number {
+  // The initial host has no possession timestamp; treat its ring as fresh until
+  // the first dash, so the run opens gentle and tightens from the second host on.
+  if (state.lastPossessionAtMs < 0) return EXORCIST_CAMP_RADIUS
+  const overstayMs = state.timeMs - state.lastPossessionAtMs
+  return Math.max(
+    EXORCIST_CAMP_MIN_RADIUS,
+    EXORCIST_CAMP_RADIUS - overstayMs * (EXORCIST_CAMP_SHRINK_PER_SEC / 1000),
+  )
+}
+
+/** Safety net: hunters stay inside the room even when a host hugs the wall. */
+function clampToWalls(e: Exorcist): void {
+  if (e.pos.x < WALL_MARGIN) {
+    e.pos.x = WALL_MARGIN
+    e.dir.x = Math.abs(e.dir.x)
+  } else if (e.pos.x > WORLD_WIDTH - WALL_MARGIN) {
+    e.pos.x = WORLD_WIDTH - WALL_MARGIN
+    e.dir.x = -Math.abs(e.dir.x)
+  }
+  if (e.pos.y < WALL_MARGIN) {
+    e.pos.y = WALL_MARGIN
+    e.dir.y = Math.abs(e.dir.y)
+  } else if (e.pos.y > WORLD_HEIGHT - WALL_MARGIN) {
+    e.pos.y = WORLD_HEIGHT - WALL_MARGIN
+    e.dir.y = -Math.abs(e.dir.y)
   }
 }
 
