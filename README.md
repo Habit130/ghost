@@ -35,6 +35,11 @@ npm run dev        # 开发服务器 http://localhost:5173
 - CI:每个 PR 跑 typecheck + lint + test + build
 - 领域词汇见 [CONTEXT.md](CONTEXT.md);代码注释与提交信息用英文,与用户的沟通用中文
 
+## 部署
+
+- 正式发布:合并到 main 后,Deploy to GitHub Pages 工作流自动构建并发布 → https://Habit130.github.io/ghost/
+- PR 预览:每个 PR 的 CI 把 dist 打包成 artifact(在 checks 页下载,本地 npm run preview 查看)
+
 ## 目录结构
 
 ```
