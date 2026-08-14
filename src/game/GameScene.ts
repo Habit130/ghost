@@ -99,7 +99,7 @@ export class GameScene extends Phaser.Scene {
 
   private lastPhase = ''
   private lastPaused = false
-  private prev = { dashing: false, hostId: -1, phase: 'title' }
+  private prev = { dashing: false, hostId: -1, phase: 'title', score: 0, combo: 0, nearMiss: false }
 
   constructor() {
     super('GameScene')
@@ -115,7 +115,14 @@ export class GameScene extends Phaser.Scene {
     this.aimedHostId = null
     this.hostShapes.clear()
     this.exorcistShapes.clear()
-    this.prev = { dashing: false, hostId: this.state.ghostHostId ?? -1, phase: 'title' }
+    this.prev = {
+      dashing: false,
+      hostId: this.state.ghostHostId ?? -1,
+      phase: 'title',
+      score: 0,
+      combo: 0,
+      nearMiss: false,
+    }
 
     this.add.rectangle(WORLD_WIDTH / 2, WORLD_HEIGHT / 2, WORLD_WIDTH, WORLD_HEIGHT, 0x171126)
     this.add.grid(WORLD_WIDTH / 2, WORLD_HEIGHT / 2, WORLD_WIDTH, WORLD_HEIGHT, 48, 48, 0x241d3d, 0.6)
@@ -249,11 +256,32 @@ export class GameScene extends Phaser.Scene {
     if (!this.prev.dashing && s.dash !== null) blips.dash()
     if (this.prev.hostId !== s.ghostHostId && s.ghostHostId !== null && s.dash === null) {
       const host = s.hosts.find((h) => h.id === s.ghostHostId)
-      if (host !== undefined && host.rare) blips.rare()
-      else blips.possess()
+      if (host !== undefined) {
+        this.floatScore(host.pos.x, host.pos.y, s.score - this.prev.score, s.nearMiss)
+        if (host.rare) blips.rare()
+        else blips.possess()
+        if (s.nearMiss) {
+          blips.nearMiss()
+          this.cameras.main.shake(70, 0.0035)
+        }
+      }
     }
-    if (this.prev.phase === 'running' && s.phase === 'dying') blips.death()
-    this.prev = { dashing: s.dash !== null, hostId: s.ghostHostId ?? -1, phase: s.phase }
+    if (s.combo > 1 && s.combo !== this.prev.combo) {
+      this.comboText.setScale(1.5)
+      this.tweens.add({ targets: this.comboText, scale: 1, duration: 180, ease: 'Back.Out' })
+    }
+    if (this.prev.phase === 'running' && s.phase === 'dying') {
+      blips.death()
+      this.cameras.main.shake(140, 0.006)
+    }
+    this.prev = {
+      dashing: s.dash !== null,
+      hostId: s.ghostHostId ?? -1,
+      phase: s.phase,
+      score: s.score,
+      combo: s.combo,
+      nearMiss: s.nearMiss,
+    }
 
     if (this.lastPhase !== s.phase) {
       if (s.phase === 'gameover') {
@@ -288,6 +316,25 @@ export class GameScene extends Phaser.Scene {
       this.trail.length = 0
       this.trailGfx.clear()
     }
+  }
+
+  /** Floating score popup at the possessed host; highlighted on a near miss. */
+  private floatScore(x: number, y: number, gained: number, nearMiss: boolean): void {
+    const label = this.add.text(x, y - 26, nearMiss ? `贴脸! +${gained}` : `+${gained}`, {
+      fontFamily: 'sans-serif',
+      fontSize: nearMiss ? '24px' : '18px',
+      fontStyle: 'bold',
+      color: nearMiss ? '#ffd166' : '#ffffff',
+    })
+    label.setOrigin(0.5).setDepth(10)
+    this.tweens.add({
+      targets: label,
+      y: y - 70,
+      alpha: 0,
+      duration: 800,
+      ease: 'Cubic.Out',
+      onComplete: () => label.destroy(),
+    })
   }
 
   private hostShape(host: Host): Phaser.GameObjects.Rectangle {

@@ -31,5 +31,9 @@ export const blips = {
     tone(880, 1320, 60, 'sine', 0.07)
     setTimeout(() => tone(1320, 1760, 80, 'sine', 0.07), 70)
   },
+  nearMiss: (): void => {
+    tone(900, 1500, 55, 'sine', 0.05)
+    setTimeout(() => tone(600, 420, 60, 'square', 0.04), 50)
+  },
   death: (): void => tone(220, 55, 260, 'sawtooth', 0.08),
 }
