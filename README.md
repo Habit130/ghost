@@ -10,7 +10,7 @@
 
 ## 本地开发
 
-需要 Node ≥ 22(仓库在 Node 24 下开发)。
+需要 Node ≥ 22.13(Vite 8 要求 ≥ 22.12,ESLint 10 要求 ≥ 22.13;仓库在 Node 24 下开发)。
 
 ```bash
 npm install
