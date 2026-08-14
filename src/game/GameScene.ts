@@ -88,6 +88,9 @@ export class GameScene extends Phaser.Scene {
 
   private ghost!: Phaser.GameObjects.Arc
   private aimMark!: Phaser.GameObjects.Arc
+  private aimGfx!: Phaser.GameObjects.Graphics
+  private trailGfx!: Phaser.GameObjects.Graphics
+  private trail: Vec[] = []
   private hostShapes = new Map<number, Phaser.GameObjects.Rectangle>()
   private exorcistShapes = new Map<number, Phaser.GameObjects.Arc>()
   private scoreText!: Phaser.GameObjects.Text
@@ -96,7 +99,7 @@ export class GameScene extends Phaser.Scene {
 
   private lastPhase = ''
   private lastPaused = false
-  private prev = { dashing: false, hostId: -1, phase: 'title' }
+  private prev = { dashing: false, hostId: -1, phase: 'title', score: 0, combo: 0, nearMiss: false }
 
   constructor() {
     super('GameScene')
@@ -112,7 +115,14 @@ export class GameScene extends Phaser.Scene {
     this.aimedHostId = null
     this.hostShapes.clear()
     this.exorcistShapes.clear()
-    this.prev = { dashing: false, hostId: this.state.ghostHostId ?? -1, phase: 'title' }
+    this.prev = {
+      dashing: false,
+      hostId: this.state.ghostHostId ?? -1,
+      phase: 'title',
+      score: 0,
+      combo: 0,
+      nearMiss: false,
+    }
 
     this.add.rectangle(WORLD_WIDTH / 2, WORLD_HEIGHT / 2, WORLD_WIDTH, WORLD_HEIGHT, 0x171126)
     this.add.grid(WORLD_WIDTH / 2, WORLD_HEIGHT / 2, WORLD_WIDTH, WORLD_HEIGHT, 48, 48, 0x241d3d, 0.6)
@@ -136,6 +146,11 @@ export class GameScene extends Phaser.Scene {
     this.aimMark = this.add.circle(0, 0, HOST_HALF_SIZE + 14, AIM_COLOR, 0.22)
     this.aimMark.setDepth(4)
     this.aimMark.setVisible(false)
+    this.aimGfx = this.add.graphics()
+    this.aimGfx.setDepth(4)
+    this.trailGfx = this.add.graphics()
+    this.trailGfx.setDepth(2)
+    this.trail = []
 
     this.lastPhase = ''
     this.lastPaused = false
@@ -174,6 +189,7 @@ export class GameScene extends Phaser.Scene {
     const s = this.state
 
     this.ghost.setPosition(s.ghostPos.x, s.ghostPos.y)
+    this.drawTrail(s)
     if (s.phase === 'dying' && s.deathAtMs !== null) {
       this.ghost.setAlpha(1 - Math.min(1, (s.timeMs - s.deathAtMs) / DEATH_FREEZE_MS))
     } else {
@@ -224,22 +240,48 @@ export class GameScene extends Phaser.Scene {
       if (target !== undefined) {
         this.aimMark.setPosition(target.pos.x, target.pos.y)
         this.aimMark.setVisible(true)
+        this.aimGfx.clear()
+        this.aimGfx.lineStyle(2, AIM_COLOR, 0.4)
+        this.aimGfx.lineBetween(s.ghostPos.x, s.ghostPos.y, target.pos.x, target.pos.y)
       } else {
         this.aimedHostId = null
         this.aimMark.setVisible(false)
+        this.aimGfx.clear()
       }
     } else {
       this.aimMark.setVisible(false)
+      this.aimGfx.clear()
     }
 
     if (!this.prev.dashing && s.dash !== null) blips.dash()
     if (this.prev.hostId !== s.ghostHostId && s.ghostHostId !== null && s.dash === null) {
       const host = s.hosts.find((h) => h.id === s.ghostHostId)
-      if (host !== undefined && host.rare) blips.rare()
-      else blips.possess()
+      if (host !== undefined) {
+        this.floatScore(host.pos.x, host.pos.y, s.score - this.prev.score, s.nearMiss)
+        if (host.rare) blips.rare()
+        else blips.possess()
+        if (s.nearMiss) {
+          blips.nearMiss()
+          this.cameras.main.shake(70, 0.0035)
+        }
+      }
     }
-    if (this.prev.phase === 'running' && s.phase === 'dying') blips.death()
-    this.prev = { dashing: s.dash !== null, hostId: s.ghostHostId ?? -1, phase: s.phase }
+    if (s.combo > 1 && s.combo !== this.prev.combo) {
+      this.comboText.setScale(1.5)
+      this.tweens.add({ targets: this.comboText, scale: 1, duration: 180, ease: 'Back.Out' })
+    }
+    if (this.prev.phase === 'running' && s.phase === 'dying') {
+      blips.death()
+      this.cameras.main.shake(140, 0.006)
+    }
+    this.prev = {
+      dashing: s.dash !== null,
+      hostId: s.ghostHostId ?? -1,
+      phase: s.phase,
+      score: s.score,
+      combo: s.combo,
+      nearMiss: s.nearMiss,
+    }
 
     if (this.lastPhase !== s.phase) {
       if (s.phase === 'gameover') {
@@ -253,6 +295,46 @@ export class GameScene extends Phaser.Scene {
       this.lastPaused = this.paused
       this.syncOverlay()
     }
+  }
+
+  /** Fading afterimages behind the ghost while it dashes, so flight is readable. */
+  private drawTrail(s: GameState): void {
+    if (s.dash !== null) {
+      const last = this.trail[this.trail.length - 1]
+      if (last === undefined || Math.hypot(s.ghostPos.x - last.x, s.ghostPos.y - last.y) >= 10) {
+        this.trail.push({ x: s.ghostPos.x, y: s.ghostPos.y })
+      }
+      if (this.trail.length > 10) this.trail.shift()
+      const g = this.trailGfx
+      g.clear()
+      for (let i = 0; i < this.trail.length; i++) {
+        const t = (i + 1) / this.trail.length
+        g.fillStyle(GHOST_COLOR, 0.25 * t)
+        g.fillCircle(this.trail[i].x, this.trail[i].y, GHOST_RADIUS * (0.4 + 0.5 * t))
+      }
+    } else if (this.trail.length > 0) {
+      this.trail.length = 0
+      this.trailGfx.clear()
+    }
+  }
+
+  /** Floating score popup at the possessed host; highlighted on a near miss. */
+  private floatScore(x: number, y: number, gained: number, nearMiss: boolean): void {
+    const label = this.add.text(x, y - 26, nearMiss ? `贴脸! +${gained}` : `+${gained}`, {
+      fontFamily: 'sans-serif',
+      fontSize: nearMiss ? '24px' : '18px',
+      fontStyle: 'bold',
+      color: nearMiss ? '#ffd166' : '#ffffff',
+    })
+    label.setOrigin(0.5).setDepth(10)
+    this.tweens.add({
+      targets: label,
+      y: y - 70,
+      alpha: 0,
+      duration: 800,
+      ease: 'Cubic.Out',
+      onComplete: () => label.destroy(),
+    })
   }
 
   private hostShape(host: Host): Phaser.GameObjects.Rectangle {
@@ -285,7 +367,7 @@ export class GameScene extends Phaser.Scene {
       el.className = ''
       el.innerHTML = `<h1>Boo Dash / 阿飘冲刺</h1>
 <div class="sub">方向键 / WASD 瞄准 · Space 冲刺 · 触屏点选宿主</div>
-<div class="sub">躲开驱魔人,别在一个宿主里停留超过 5 秒</div>
+<div class="sub">躲开驱魔人,别在一个宿主里停留超过 3.5 秒</div>
 <div class="score">最高 ${s.highScore}</div>
 <div class="sub">按任意键 / 点击开始</div>`
       return

@@ -15,12 +15,13 @@ import {
   FIXED_DT_MS,
   HOST_PURIFY_MS,
   MAX_HOSTS,
+  NEAR_MISS_RADIUS,
   RARE_HOST_EVERY,
   WORLD_HEIGHT,
   WORLD_WIDTH,
 } from './constants.ts'
-import { COMBO_WINDOW_MS, possessionScore } from './scoring.ts'
-import type { Exorcist, GameEvent, GameState, Host, Vec } from './types.ts'
+import { COMBO_WINDOW_MS, NEAR_MISS_BONUS, distanceBonus, possessionScore } from './scoring.ts'
+import type { Dash, Exorcist, GameEvent, GameState, Host, Vec } from './types.ts'
 
 const WALL_MARGIN = 28
 
@@ -60,7 +61,15 @@ function beginDash(state: GameState, hostId: number): void {
   const current = currentHost(state)
   if (current) current.purifyDeadlineMs = Number.POSITIVE_INFINITY
   state.ghostHostId = null
-  state.dash = { hostId: target.id, from: { ...from }, to: { ...target.pos }, distance, progress: 0 }
+  state.nearMiss = false
+  state.dash = {
+    hostId: target.id,
+    from: { ...from },
+    to: { ...target.pos },
+    distance,
+    progress: 0,
+    minExorcistGap: Number.POSITIVE_INFINITY,
+  }
   state.lastDashAtMs = state.timeMs
 }
 
@@ -72,18 +81,23 @@ function tickDash(state: GameState, dtMs: number): void {
     state.ghostPos = { ...dash.to }
     state.dash = null
     const host = state.hosts.find((h) => h.id === dash.hostId)
-    if (host !== undefined) arrive(state, host)
+    if (host !== undefined) arrive(state, host, dash)
   } else {
     state.ghostPos = lerp(dash.from, dash.to, dash.progress)
   }
 }
 
-function arrive(state: GameState, host: Host): void {
+function arrive(state: GameState, host: Host, dash: Dash): void {
   state.ghostHostId = host.id
   state.ghostPos = { ...host.pos }
   state.combo = state.timeMs - state.lastPossessionAtMs <= COMBO_WINDOW_MS ? state.combo + 1 : 1
   state.lastPossessionAtMs = state.timeMs
   state.score += possessionScore(state.combo, host.rare)
+  state.score += distanceBonus(dash.distance)
+  if (dash.minExorcistGap < NEAR_MISS_RADIUS) {
+    state.nearMiss = true
+    state.score += NEAR_MISS_BONUS
+  }
   state.possessions += 1
   host.purifyDeadlineMs = state.timeMs + HOST_PURIFY_MS
   if (state.possessions % RARE_HOST_EVERY === 0) spawnRareHost(state)
@@ -120,10 +134,11 @@ function tickExorcists(state: GameState, dtMs: number): void {
     let vy: number
     if (state.dash === null && distance <= ringRadius) {
       // Camp: circle the ghost, correcting radially toward the shrinking ring.
+      // The 2x factor keeps the orbit tracking the ring as it closes in.
       const orbit = e.id % 2 === 0 ? 1 : -1
       const radial = (distance - ringRadius) / ringRadius
-      vx = (-ny * orbit + nx * radial) * EXORCIST_CAMP_SPEED
-      vy = (nx * orbit + ny * radial) * EXORCIST_CAMP_SPEED
+      vx = (-ny * orbit + nx * radial * 2) * EXORCIST_CAMP_SPEED
+      vy = (nx * orbit + ny * radial * 2) * EXORCIST_CAMP_SPEED
     } else {
       vx = nx * seekSpeed
       vy = ny * seekSpeed
@@ -195,9 +210,12 @@ function spawnExorcists(state: GameState): void {
 
 /** Exorcists only threaten a ghost in flight; a possessed ghost is safe. */
 function checkDashCollision(state: GameState): void {
-  if (state.dash === null) return
+  const dash = state.dash
+  if (dash === null) return
   for (const e of state.exorcists) {
-    if (dist(e.pos, state.ghostPos) < COLLISION_RADIUS) {
+    const gap = dist(e.pos, state.ghostPos)
+    if (gap < dash.minExorcistGap) dash.minExorcistGap = gap
+    if (gap < COLLISION_RADIUS) {
       state.dash = null
       die(state)
       return

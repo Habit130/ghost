@@ -10,14 +10,16 @@ export const FIXED_DT_MS = 1000 / 60
 export const MAX_STEPS_PER_FRAME = 4
 
 export const DASH_SPEED = 1100
-export const DASH_COOLDOWN_MS = 200
-export const HOST_PURIFY_MS = 5000
+export const DASH_COOLDOWN_MS = 150
+export const HOST_PURIFY_MS = 3500
 export const HOST_WARN_MS = 1000
 
 export const COLLISION_RADIUS = 24
 export const GHOST_RADIUS = 14
 export const HOST_HALF_SIZE = 26
 export const EXORCIST_RADIUS = 12
+/** Mid-dash gap under this to an exorcist counts as a shave (see NEAR_MISS_BONUS). */
+export const NEAR_MISS_RADIUS = 40
 
 export const EXORCIST_START = 1
 export const EXORCIST_INTERVAL_MS = 20000
