@@ -18,6 +18,10 @@ function boot(type: number): void {
       mode: Phaser.Scale.FIT,
       autoCenter: Phaser.Scale.CENTER_BOTH,
     },
+    render: {
+      // Crisp 16x16 pixel art without smoothing.
+      pixelArt: true,
+    },
     scene: [GameScene],
   })
 }
